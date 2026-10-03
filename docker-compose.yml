@@ -1,0 +1,97 @@
+name: pts
+
+networks:
+  pts-net:
+    name: pts-net
+    driver: bridge
+
+services:
+  pts-frontend:
+    container_name: pts-frontend
+    build:
+      # Repository root: the image installs from the workspace's single package-lock.json
+      context: .
+      dockerfile: frontend/Dockerfile
+    networks:
+      - pts-net
+    ports:
+      - '7777:7777'
+    environment:
+      NODE_ENV: production
+      PORT: 7777
+      INTERNAL_API_URL: http://pts-api:7778
+      NEXT_PUBLIC_API_URL: http://localhost:7778
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY in .env (see .env.example)}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env (see .env.example)}
+      # Browsers drop Secure cookies on plain http://<LAN-IP>; keep false until the app is behind HTTPS
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      # Must match the api service: true only behind a reverse proxy that overwrites X-Forwarded-For
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    depends_on:
+      pts-api:
+        condition: service_healthy
+    restart: unless-stopped
+    # `docker compose up --wait` (and the CI smoke test) only return once Next.js actually serves pages;
+    # until then the published port accepts connections and resets them.
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:7777/login']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  pts-api:
+    container_name: pts-api
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    networks:
+      - pts-net
+    ports:
+      - '${PORT:-7778}:7778'
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 7778
+      ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY in .env (see .env.example)}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@pts-postgres:5432/${POSTGRES_DB:-public_transport_spy}
+      # Web app URL encoded in device QR codes; set to an address phones can reach (LAN IP or domain)
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-http://localhost:7777}
+      # Optional: move all devices to a new API base URL
+      DEVICE_BACKEND_URL: ${DEVICE_BACKEND_URL:-}
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+    depends_on:
+      pts-postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:7778/healthz']
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  pts-postgres:
+    container_name: pts-postgres
+    image: postgres:18-alpine
+    networks:
+      - pts-net
+    ports:
+      - '4700:5432'
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-public_transport_spy}
+    volumes:
+      # PostgreSQL 18 images keep data in a versioned subdirectory (/var/lib/postgresql/18/docker)
+      - pts-postgres-data:/var/lib/postgresql
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-public_transport_spy}']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pts-postgres-data:
+    name: pts-postgres-data

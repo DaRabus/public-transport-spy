@@ -1,0 +1,12 @@
+# Both images (api, frontend) build from the repository root.
+**/node_modules
+**/.next
+**/dist
+**/.env
+**/.env.*
+.git
+.superpowers
+on-chip-software
+docs
+agents
+frontend/--full-page

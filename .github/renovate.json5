@@ -1,0 +1,113 @@
+{
+  // Dependency updates that mostly merge themselves. The safety net is CI: Renovate only automerges
+  // once every check on the PR is green (build, format, tests, Docker images, stack smoke test, firmware).
+  // See docs/testing.md "Automated dependency updates" for the recommended branch protection.
+  extends: [
+    "config:recommended",
+    "config:js-app",
+    "group:allNonMajor",
+    "workarounds:typesNodeVersioning",
+    "security:minimumReleaseAgeNpm",
+  ],
+  baseBranchPatterns: ["main"],
+  dependencyDashboard: true,
+  rebaseWhen: "conflicted",
+  branchConcurrentLimit: 5,
+  prConcurrentLimit: 5,
+  timezone: "Europe/Zurich",
+  schedule: ["after 8pm every weekday", "before 7am every weekday", "every weekend"],
+  assignees: ["DaRabus"],
+  labels: ["dependencies"],
+  lockFileMaintenance: {
+    enabled: true,
+    automerge: true,
+    schedule: ["before 7am on monday"],
+  },
+  // Security fixes ignore the schedule and release-age delay, and are never silently merged.
+  vulnerabilityAlerts: {
+    labels: ["security"],
+    schedule: ["at any time"],
+    minimumReleaseAge: null,
+    automerge: false,
+  },
+  packageRules: [
+    {
+      description: "Minor and patch updates of everything we can test in CI: automerge after 3 days",
+      matchUpdateTypes: ["minor", "patch", "digest", "pin", "pinDigest"],
+      matchManagers: ["npm", "github-actions", "dockerfile", "docker-compose", "nvm"],
+      groupName: "all non-major dependencies",
+      minimumReleaseAge: "3 days",
+      automerge: true,
+    },
+    {
+      description: "Major updates: separate PRs, wait 14 days, review and merge by hand",
+      matchUpdateTypes: ["major"],
+      minimumReleaseAge: "14 days",
+      automerge: false,
+      addLabels: ["major"],
+    },
+    {
+      description: "Keep framework families in step",
+      matchManagers: ["npm"],
+      matchPackageNames: ["@nestjs/**"],
+      groupName: "nestjs packages",
+      groupSlug: "nestjs",
+    },
+    {
+      description: "Keep framework families in step",
+      matchManagers: ["npm"],
+      matchPackageNames: ["next", "eslint-config-next", "@next/**"],
+      groupName: "next.js packages",
+      groupSlug: "nextjs",
+    },
+    {
+      description: "Keep framework families in step",
+      matchManagers: ["npm"],
+      matchPackageNames: ["react", "react-dom", "@types/react", "@types/react-dom"],
+      groupName: "react packages",
+      groupSlug: "react",
+    },
+    {
+      description: "Keep framework families in step",
+      matchManagers: ["npm"],
+      matchPackageNames: ["@mui/**", "@emotion/**"],
+      groupName: "mui packages",
+      groupSlug: "mui",
+    },
+    {
+      description: "TypeScript 7 has no programmatic compiler API yet (Nest CLI, ts-jest, Next need it); wait for 7.1",
+      matchPackageNames: ["typescript"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      description: "NestJS 12 and nestjs-pino 5 are ESM-only: needs an ESM migration of the API (Jest, TypeORM CLI, ts-node) first",
+      matchPackageNames: ["@nestjs/**", "nestjs-pino"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      description: "The Node major is chosen by hand (.nvmrc, Dockerfiles, engines); patch/minor flow in",
+      matchDatasources: ["node-version", "docker"],
+      matchPackageNames: ["node", "/^npm$/"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      description: "PostgreSQL majors need a dump/restore of existing data: never automatic",
+      matchDatasources: ["docker"],
+      matchPackageNames: ["postgres"],
+      matchUpdateTypes: ["major"],
+      enabled: false,
+    },
+    {
+      description: "Firmware libraries and the ESP32 platform are only compile-tested, not run on hardware: PR only, flash and check before merging",
+      matchManagers: ["platformio", "pip_requirements"],
+      matchFileNames: ["on-chip-software/**"],
+      groupName: "firmware dependencies",
+      groupSlug: "firmware",
+      automerge: false,
+      addLabels: ["firmware"],
+    },
+  ],
+}

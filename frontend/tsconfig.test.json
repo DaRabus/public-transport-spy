@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "incremental": false,
+    "plugins": [],
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "esnext"
+    ]
+  },
+  "include": [
+    "src/**/*.test.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

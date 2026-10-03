@@ -1,0 +1,13 @@
+name: 'Init CI Job'
+description: 'Setup Node.js from .nvmrc and initialize workspace dependencies'
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version-file: '.nvmrc'
+        cache: 'npm'
+
+    - name: Install dependencies
+      uses: ./.github/actions/npm-install

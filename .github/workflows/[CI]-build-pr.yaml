@@ -1,0 +1,125 @@
+name: Build Pull Request
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CHECKOUT_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+jobs:
+  build-api:
+    name: 'Build NestJS API'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Init CI Job
+        uses: ./.github/actions/init-ci-job
+
+      - name: Format Check (Prettier)
+        run: npm run format:check
+
+      - name: TypeScript Check
+        run: npm run typecheck:api
+
+      - name: Build API
+        run: npm run build:api
+
+      - name: Upload API Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-dist
+          path: api/dist
+          retention-days: 1
+
+  build-frontend:
+    name: 'Build Next.js Frontend'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Init CI Job
+        uses: ./.github/actions/init-ci-job
+
+      - name: Cache Next.js build
+        uses: ./.github/actions/cache-next
+
+      - name: Build Frontend
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build:frontend
+
+      - name: Upload Frontend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-next
+          path: |
+            frontend/.next/standalone
+            frontend/.next/static
+          retention-days: 1
+
+  docker-images:
+    name: 'Docker Images'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Same contexts as docker-compose.yml: both images build from the repo root and install from the
+      # workspace's single package-lock.json; a drifted lockfile or Dockerfile fails here.
+      - name: Build API image
+        run: docker build --file api/Dockerfile --tag pts-api:ci .
+
+      - name: Build frontend image
+        run: docker build --file frontend/Dockerfile --tag pts-frontend:ci .
+
+  # Boots the real stack (PostgreSQL 18, migrations, API, Next.js server) and probes it. Catches what unit
+  # tests cannot: a dependency update that builds but crashes at startup or breaks the API <-> BFF wiring.
+  smoke-test:
+    name: 'Stack Smoke Test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start the stack
+        run: |
+          echo "ADMIN_API_KEY=$(openssl rand -hex 32)" >> .env
+          echo "SESSION_SECRET=$(openssl rand -hex 32)" >> .env
+          docker compose up --build --detach --wait --wait-timeout 300
+
+      - name: Probe API and frontend
+        run: |
+          set -e
+          curl -fsS http://localhost:7778/healthz
+          curl -fsS --retry 15 --retry-delay 2 --retry-connrefused --retry-all-errors -o /dev/null http://localhost:7777/login
+          # The server-side proxy answers and the session/guard logic works: no session means 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:7777/api/v1/devices)" = 401
+          # Admin routes are closed without the key; unknown devices are never auto-registered
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:7778/v1/devices)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Device-ID: 00000000-0000-4000-8000-000000000000' http://localhost:7778/api/v1/device/config)" = 404
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 100
+
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes

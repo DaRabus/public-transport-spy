@@ -1,0 +1,66 @@
+name: Integration Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CHECKOUT_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+
+jobs:
+  test:
+    name: 'Jest Unit & Integration Tests'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Real PostgreSQL 18 (native uuidv7()) for the database-to-API integration tests.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: public_transport_spy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d public_transport_spy_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    env:
+      INTEGRATION_DATABASE_URL: postgres://postgres:postgres@localhost:5432/public_transport_spy_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CHECKOUT_REF }}
+
+      - name: Init CI Job
+        uses: ./.github/actions/init-ci-job
+
+      - name: API unit tests
+        run: npm run test:api
+
+      - name: API end-to-end tests (HTTP pipeline, mocked repositories)
+        run: npm --prefix api run test:e2e
+
+      - name: API integration tests (database to API, PostgreSQL 18)
+        run: npm run test:integration
+
+      - name: Migration drift check (entities vs migrations)
+        # The integration tests migrated the test database; any entity change without a migration fails here.
+        env:
+          DATABASE_URL: ${{ env.INTEGRATION_DATABASE_URL }}
+        run: npm run migration:check
+
+      - name: Web app logic tests (live preview, admin metrics)
+        run: npm run test:frontend

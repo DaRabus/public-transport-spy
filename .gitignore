@@ -1,0 +1,30 @@
+node_modules
+dist
+*.tsbuildinfo
+
+# Environment — secrets live here. Only `.env.example` is committed.
+.env
+.env.*
+!.env.example
+
+# Test / build artifacts
+coverage
+*.log
+
+# Editor / OS
+.DS_Store
+.idea
+.vscode
+
+# PlatformIO build artifacts
+.pio
+
+# Next.js build artifacts
+.next
+out
+
+
+# Local AI-assistant state and planning scratch
+.claude/settings.local.json
+.superpowers
+.agents

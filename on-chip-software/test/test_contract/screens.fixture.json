@@ -1,0 +1,258 @@
+{
+  "pages": [
+    {
+      "durationMs": 15000,
+      "widgets": [
+        {
+          "t": "text",
+          "x": 0,
+          "y": 12,
+          "w": 150,
+          "font": "medium",
+          "text": "Zürich HB"
+        },
+        {
+          "t": "status",
+          "x": 212,
+          "y": 12,
+          "align": "right"
+        },
+        {
+          "t": "clock",
+          "x": 254,
+          "y": 12,
+          "font": "medium",
+          "align": "right",
+          "format": "%H:%M"
+        },
+        {
+          "t": "line",
+          "x": 0,
+          "y": 16,
+          "w": 256
+        },
+        {
+          "t": "list",
+          "y": 30,
+          "rowH": 16,
+          "maxRows": 3,
+          "font": "regular",
+          "leadSec": 0,
+          "empty": "No matching departures right now",
+          "cols": [
+            {
+              "x": 0,
+              "w": 32,
+              "kind": "countdown"
+            },
+            {
+              "x": 34,
+              "w": 56
+            },
+            {
+              "x": 94,
+              "w": 160
+            }
+          ],
+          "items": [
+            {
+              "ts": 1780000060,
+              "cells": [
+                "S2",
+                "Zürich Flughafen"
+              ]
+            },
+            {
+              "ts": 1780000180,
+              "cells": [
+                "IR 36",
+                "Basel SBB"
+              ]
+            },
+            {
+              "ts": 1780000360,
+              "cells": [
+                "B32",
+                "Strassenverkehrsamt"
+              ]
+            },
+            {
+              "ts": 1780000540,
+              "cells": [
+                "S12",
+                "Winterthur"
+              ]
+            },
+            {
+              "ts": 1780000720,
+              "cells": [
+                "T10",
+                "Zürich Flughafen"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "durationMs": 15000,
+      "widgets": [
+        {
+          "t": "text",
+          "x": 0,
+          "y": 12,
+          "w": 150,
+          "font": "medium",
+          "text": "Zürich HB"
+        },
+        {
+          "t": "status",
+          "x": 212,
+          "y": 12,
+          "align": "right"
+        },
+        {
+          "t": "clock",
+          "x": 254,
+          "y": 12,
+          "font": "medium",
+          "align": "right",
+          "format": "%H:%M"
+        },
+        {
+          "t": "line",
+          "x": 0,
+          "y": 16,
+          "w": 256
+        },
+        {
+          "t": "list",
+          "y": 27,
+          "rowH": 12,
+          "maxRows": 4,
+          "font": "regular",
+          "leadSec": 120,
+          "empty": "No matching departures right now",
+          "cols": [
+            {
+              "x": 0,
+              "w": 34,
+              "kind": "time"
+            },
+            {
+              "x": 36,
+              "w": 56
+            },
+            {
+              "x": 96,
+              "w": 28
+            },
+            {
+              "x": 128,
+              "w": 102
+            },
+            {
+              "x": 232,
+              "w": 22,
+              "align": "right"
+            }
+          ],
+          "items": [
+            {
+              "ts": 1780000180,
+              "cells": [
+                "IR 36",
+                "7",
+                "Basel SBB",
+                ""
+              ]
+            },
+            {
+              "ts": 1780000360,
+              "cells": [
+                "B32",
+                "",
+                "Strassenverkehrsamt",
+                ""
+              ]
+            },
+            {
+              "ts": 1780000540,
+              "cells": [
+                "S12",
+                "33",
+                "Winterthur",
+                ""
+              ]
+            },
+            {
+              "ts": 1780000720,
+              "cells": [
+                "T10",
+                "",
+                "Zürich Flughafen",
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "durationMs": 5000,
+      "widgets": [
+        {
+          "t": "status",
+          "x": 254,
+          "y": 10,
+          "align": "right"
+        },
+        {
+          "t": "clock",
+          "x": 128,
+          "y": 40,
+          "font": "xl",
+          "align": "center",
+          "format": "%H:%M"
+        },
+        {
+          "t": "clock",
+          "x": 128,
+          "y": 60,
+          "font": "regular",
+          "align": "center",
+          "format": "%a %d.%m.%Y"
+        }
+      ]
+    },
+    {
+      "durationMs": 8000,
+      "widgets": [
+        {
+          "t": "status",
+          "x": 254,
+          "y": 10,
+          "align": "right"
+        },
+        {
+          "t": "text",
+          "x": 128,
+          "y": 28,
+          "w": 252,
+          "font": "medium",
+          "text": "Gone fishing",
+          "align": "center"
+        },
+        {
+          "t": "text",
+          "x": 128,
+          "y": 46,
+          "w": 252,
+          "font": "medium",
+          "text": "Back Monday",
+          "align": "center"
+        }
+      ]
+    }
+  ]
+}

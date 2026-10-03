@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="600" viewBox="0 0 1000 600" font-family="Helvetica, Arial, sans-serif">
+  <title>Public Transport Spy wiring: ESP32 DevKit to SSD1322 OLED (4-wire SPI)</title>
+  <rect width="1000" height="600" fill="#ffffff"/>
+
+  <text x="500" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#1f2328">ESP32 DevKit → SSD1322 256×64 OLED (4-wire SPI)</text>
+
+  <!-- ESP32 board -->
+  <rect x="40" y="60" width="270" height="470" rx="10" fill="#1f5f3f" stroke="#123b27" stroke-width="2"/>
+  <rect x="60" y="68" width="170" height="58" rx="4" fill="#c9d3cc" stroke="#7d8a80"/>
+  <path d="M75 80 h20 v20 h20 v-20 h20 v20 h20 v-20 h20 v20 h20" fill="none" stroke="#b08a2e" stroke-width="3"/>
+  <text x="145" y="118" text-anchor="middle" font-size="10" fill="#3b4540">PCB antenna: keep clear of metal</text>
+  <rect x="60" y="140" width="150" height="110" rx="4" fill="#9aa3a0" stroke="#5f6866"/>
+  <text x="135" y="190" text-anchor="middle" font-size="13" font-weight="bold" fill="#1f2328">ESP32-WROOM-32E</text>
+  <text x="135" y="210" text-anchor="middle" font-size="12" fill="#1f2328">4 MB flash</text>
+  <text x="60" y="290" font-size="16" font-weight="bold" fill="#ffffff">ESP32 DevKit</text>
+  <text x="60" y="310" font-size="11" fill="#d7e7dd">classic ESP32 only</text>
+  <text x="60" y="325" font-size="11" fill="#d7e7dd">(not S2 / S3 / C3)</text>
+
+  <!-- BOOT button -->
+  <rect x="70" y="440" width="44" height="30" rx="4" fill="#2b2b2b"/>
+  <circle cx="92" cy="455" r="9" fill="#555"/>
+  <text x="92" y="487" text-anchor="middle" font-size="11" font-weight="bold" fill="#ffffff">BOOT</text>
+  <text x="92" y="500" text-anchor="middle" font-size="10" fill="#d7e7dd">= GPIO 0</text>
+  <rect x="140" y="440" width="44" height="30" rx="4" fill="#2b2b2b"/>
+  <circle cx="162" cy="455" r="9" fill="#555"/>
+  <text x="162" y="487" text-anchor="middle" font-size="11" font-weight="bold" fill="#ffffff">EN</text>
+  <text x="162" y="500" text-anchor="middle" font-size="10" fill="#d7e7dd">reset</text>
+
+  <!-- USB -->
+  <rect x="135" y="528" width="80" height="30" rx="3" fill="#b8bec2" stroke="#6b7378"/>
+  <text x="175" y="548" text-anchor="middle" font-size="12" font-weight="bold" fill="#1f2328">USB</text>
+  <text x="175" y="580" text-anchor="middle" font-size="12" fill="#1f2328">5 V adapter ≥ 1 A, data cable</text>
+
+  <!-- ESP32 pins (right edge) -->
+  <g font-size="13" font-weight="bold" fill="#ffffff" text-anchor="end">
+    <text x="292" y="139">GPIO 23</text>
+    <text x="292" y="184">GPIO 18</text>
+    <text x="292" y="229">GPIO 5</text>
+    <text x="292" y="274">GPIO 4</text>
+    <text x="292" y="319">GPIO 2</text>
+    <text x="292" y="364">GND</text>
+    <text x="292" y="409">3V3</text>
+    <text x="292" y="454">5V / VIN</text>
+  </g>
+  <g fill="#e3c35a" stroke="#8a6d12">
+    <circle cx="310" cy="135" r="6"/><circle cx="310" cy="180" r="6"/><circle cx="310" cy="225" r="6"/>
+    <circle cx="310" cy="270" r="6"/><circle cx="310" cy="315" r="6"/><circle cx="310" cy="360" r="6"/>
+    <circle cx="310" cy="405" r="6"/><circle cx="310" cy="450" r="6"/>
+  </g>
+
+  <!-- Wires -->
+  <g stroke-width="5" fill="none" stroke-linecap="round">
+    <path d="M316 135 H634" stroke="#1f6feb"/>
+    <path d="M316 180 H634" stroke="#e3b200"/>
+    <path d="M316 225 H634" stroke="#2da44e"/>
+    <path d="M316 270 H634" stroke="#8b5a2b"/>
+    <path d="M316 315 H634" stroke="#8250df"/>
+    <path d="M316 360 H634" stroke="#1f2328"/>
+    <path d="M316 405 H634" stroke="#d1242f"/>
+    <path d="M316 450 H560 V405" stroke="#f08c00" stroke-dasharray="10 7"/>
+  </g>
+
+  <!-- Wire labels -->
+  <g font-size="12" fill="#1f2328" text-anchor="middle">
+    <text x="470" y="127">MOSI (VSPI)</text>
+    <text x="470" y="172">SCK (VSPI)</text>
+    <text x="470" y="217">chip select</text>
+    <text x="470" y="262">reset</text>
+    <text x="470" y="307">data / command</text>
+    <text x="470" y="352">common ground</text>
+    <text x="440" y="397" fill="#d1242f" font-weight="bold">3.3 V module</text>
+    <text x="440" y="442" fill="#b86a00" font-weight="bold">OR 5 V module (preferred if allowed)</text>
+    <text x="440" y="472" fill="#b86a00">connect only ONE of the two to VCC</text>
+  </g>
+
+  <!-- SSD1322 module -->
+  <rect x="650" y="90" width="320" height="400" rx="8" fill="#0d3b66" stroke="#082541" stroke-width="2"/>
+  <g fill="#e3c35a" stroke="#8a6d12">
+    <circle cx="640" cy="135" r="6"/><circle cx="640" cy="180" r="6"/><circle cx="640" cy="225" r="6"/>
+    <circle cx="640" cy="270" r="6"/><circle cx="640" cy="315" r="6"/><circle cx="640" cy="360" r="6"/>
+    <circle cx="640" cy="405" r="6"/>
+  </g>
+  <g font-size="13" font-weight="bold" fill="#ffffff">
+    <text x="662" y="139">5 · D1 / SDIN</text>
+    <text x="662" y="184">4 · D0 / SCLK</text>
+    <text x="662" y="229">16 · CS</text>
+    <text x="662" y="274">15 · RES</text>
+    <text x="662" y="319">14 · DC</text>
+    <text x="662" y="364">1 · GND</text>
+    <text x="662" y="409">2 · VCC</text>
+  </g>
+
+  <!-- OLED glass -->
+  <rect x="790" y="120" width="160" height="230" rx="4" fill="#111" stroke="#444"/>
+  <text x="870" y="150" text-anchor="middle" font-size="12" font-weight="bold" fill="#f5c400">SSD1322</text>
+  <text x="870" y="168" text-anchor="middle" font-size="11" fill="#f5c400">256 × 64 OLED</text>
+  <g font-family="monospace" font-size="11" fill="#f5c400" xml:space="preserve">
+    <text x="802" y="215">S3  Zürich HB  2'</text>
+    <text x="802" y="235">IR  Basel SBB  7'</text>
+    <text x="802" y="255">S9  Uster     11'</text>
+  </g>
+
+  <!-- Interface jumper callout -->
+  <rect x="800" y="380" width="150" height="90" rx="4" fill="#ffffff" stroke="#d1242f" stroke-width="2"/>
+  <text x="875" y="400" text-anchor="middle" font-size="12" font-weight="bold" fill="#d1242f">Interface jumpers</text>
+  <text x="875" y="418" text-anchor="middle" font-size="11" fill="#1f2328">BS0 / BS1 → 4SPI</text>
+  <text x="875" y="436" text-anchor="middle" font-size="11" fill="#1f2328">(often ships as 8080:</text>
+  <text x="875" y="452" text-anchor="middle" font-size="11" fill="#1f2328">panel stays black)</text>
+
+  <text x="810" y="515" text-anchor="middle" font-size="11" fill="#1f2328">Header numbers: typical 16-pin module, verify silkscreen</text>
+  <text x="500" y="580" text-anchor="start" font-size="11" fill="#57606a">Pin order simplified: wire by GPIO number, not by position.</text>
+  <text x="500" y="595" text-anchor="start" font-size="11" fill="#57606a">Wire with power off · wires ≤ 20 cm · onboard LED on GPIO 2 flickers (normal)</text>
+</svg>

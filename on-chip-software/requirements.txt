@@ -1,0 +1,3 @@
+# Firmware build tooling (CI and local): pip install -r on-chip-software/requirements.txt
+# Pinned so CI builds are reproducible; bump deliberately and rebuild.
+platformio==6.2.0

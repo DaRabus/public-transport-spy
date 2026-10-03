@@ -1,0 +1,218 @@
+name: ESP32 Firmware Memory Stats
+
+on:
+  pull_request:
+    paths:
+      - 'on-chip-software/**'
+      - '.github/workflows/[CI]-firmware-stats.yaml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'on-chip-software/**'
+      - '.github/workflows/[CI]-firmware-stats.yaml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  firmware-stats:
+    name: 'Firmware Compilation & Memory Stats'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          # PlatformIO is a Python package; its pinned version lives in on-chip-software/requirements.txt.
+          cache: 'pip'
+          cache-dependency-path: on-chip-software/requirements.txt
+
+      - name: Cache PlatformIO Core & Platforms
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            on-chip-software/.pio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('on-chip-software/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r on-chip-software/requirements.txt
+
+      - name: Firmware Logic & Screen Contract Tests (host)
+        # device_logic.h / screen_logic.h unit tests plus the contract test that renders the
+        # backend-pinned screens.fixture.json through the device's own row logic.
+        run: pio test -d on-chip-software -e native
+
+      - name: Build Firmware & Extract Memory Stats
+        id: build_stats
+        run: |
+          set -e
+          echo "Compiling ESP32 firmware with PlatformIO..."
+          
+          python3 - << 'EOF'
+          import subprocess
+          import re
+          import json
+          import sys
+
+          proc = subprocess.run(
+              ['pio', 'run', '-d', 'on-chip-software'],
+              capture_output=True,
+              text=True
+          )
+          sys.stdout.write(proc.stdout)
+          sys.stderr.write(proc.stderr)
+
+          if proc.returncode != 0:
+              sys.exit(proc.returncode)
+
+          combined = proc.stdout + proc.stderr
+
+          ram_match = re.search(r'RAM:\s+\[.*?\]\s+([\d\.]+)%\s+\(used\s+(\d+)\s+bytes\s+from\s+(\d+)\s+bytes\)', combined)
+          flash_match = re.search(r'Flash:\s+\[.*?\]\s+([\d\.]+)%\s+\(used\s+(\d+)\s+bytes\s+from\s+(\d+)\s+bytes\)', combined)
+
+          if not ram_match or not flash_match:
+              print("Failed to parse RAM/Flash output from PlatformIO build", file=sys.stderr)
+              sys.exit(1)
+
+          ram_pct = float(ram_match.group(1))
+          ram_used = int(ram_match.group(2))
+          ram_total = int(ram_match.group(3))
+          ram_free = ram_total - ram_used
+
+          flash_pct = float(flash_match.group(1))
+          flash_used = int(flash_match.group(2))
+          flash_total = int(flash_match.group(3))
+          flash_free = flash_total - flash_used
+
+          stats = {
+              "ram": {
+                  "pct": ram_pct,
+                  "used_bytes": ram_used,
+                  "total_bytes": ram_total,
+                  "free_bytes": ram_free,
+                  "used_kb": round(ram_used / 1024, 2),
+                  "total_kb": round(ram_total / 1024, 2),
+                  "free_kb": round(ram_free / 1024, 2),
+                  "status": "🟢 OK" if ram_pct < 25.0 else ("🟡 WARNING" if ram_pct < 40.0 else "🔴 CRITICAL")
+              },
+              "flash": {
+                  "pct": flash_pct,
+                  "used_bytes": flash_used,
+                  "total_bytes": flash_total,
+                  "free_bytes": flash_free,
+                  "used_mb": round(flash_used / (1024 * 1024), 2),
+                  "total_mb": round(flash_total / (1024 * 1024), 2),
+                  "free_mb": round(flash_free / (1024 * 1024), 2),
+                  "status": "🟢 OK" if flash_pct < 50.0 else ("🟡 WARNING" if flash_pct < 75.0 else "🔴 CRITICAL")
+              }
+          }
+
+          with open('stats.json', 'w') as f:
+              json.dump(stats, f, indent=2)
+          EOF
+
+      - name: Retail Firmware Build
+        # Customer build: backend URL and version baked in from the environment (see platformio.ini).
+        env:
+          PTS_BACKEND_URL: https://api.example.invalid
+          PTS_FIRMWARE_VERSION: ci-${{ github.sha }}
+        run: pio run -d on-chip-software -e esp32dev-retail
+
+      - name: Retail Build Refuses a Missing Backend URL
+        # The static_assert in main.cpp must stop a retail image without PTS_BACKEND_URL from ever being built.
+        run: |
+          if PTS_BACKEND_URL= PTS_FIRMWARE_VERSION=ci pio run -d on-chip-software -e esp32dev-retail > retail-guard.log 2>&1; then
+            echo "::error::Retail firmware built without PTS_BACKEND_URL"; exit 1
+          fi
+          grep -q "BACKEND_URL is empty" retail-guard.log
+
+      - name: Generate Summary & Comment Markdown
+        id: format_markdown
+        run: |
+          python3 - << 'EOF'
+          import json, os
+
+          with open('stats.json') as f:
+              data = json.load(f)
+
+          ram = data["ram"]
+          flash = data["flash"]
+
+          comment = f"""<!-- esp32-firmware-memory-stats -->
+          ## ⚡ ESP32 Firmware Memory Statistics
+
+          > [!NOTE]
+          > Automated memory report generated for changes in `on-chip-software/`.
+
+          | Memory Segment | Used | Limit / Total | Utilization | Free Headroom | Health Status |
+          | :--- | :--- | :--- | :--- | :--- | :--- |
+          | **RAM (Heap / Static)** | `{ram['used_bytes']:,} B` (~{ram['used_kb']} KB) | `{ram['total_bytes']:,} B` ({ram['total_kb']} KB) | **{ram['pct']}%** | `{ram['free_bytes']:,} B` (~{ram['free_kb']} KB) | {ram['status']} |
+          | **Flash (App0 Partition)** | `{flash['used_bytes']:,} B` (~{flash['used_mb']} MB) | `{flash['total_bytes']:,} B` ({flash['total_mb']} MB) | **{flash['pct']}%** | `{flash['free_bytes']:,} B` (~{flash['free_mb']} MB) | {flash['status']} |
+
+          ### 📐 Architecture Budgets & Targets
+          - **Partition Scheme:** `huge_app.csv` (App: 3.0 MB, LittleFS: 0.98 MB)
+          - **RAM Headroom:** `{ram['free_kb']} KB` free (target: > 150 KB free for SSL / mbedTLS buffers)
+          - **Flash Headroom:** `{flash['free_mb']} MB` free (target: < 50% flash utilization)
+          - **Target Hardware:** Espressif ESP32-D0WD-V3 / ESP32 DevKit v1 (Xtensa LX6 @ 240 MHz)
+          """
+
+          # Clean multiline indent
+          lines = [line.strip() if line.strip().startswith('|') or line.strip().startswith('<!--') or line.strip().startswith('##') or line.strip().startswith('>') or line.strip().startswith('-') or line.strip().startswith('###') else line for line in comment.splitlines()]
+          cleaned = "\n".join(lines)
+
+          with open('comment.md', 'w') as f:
+              f.write(cleaned)
+
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as f:
+              f.write(cleaned)
+          EOF
+
+      - name: Post or Update PR Comment
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const commentBody = fs.readFileSync('comment.md', 'utf8');
+            const tag = '<!-- esp32-firmware-memory-stats -->';
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existingComment = comments.find(c => c.body && c.body.includes(tag));
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body: commentBody
+              });
+              console.log(`Updated existing memory stats comment #${existingComment.id}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: commentBody
+              });
+              console.log('Created new memory stats comment on PR');
+            }

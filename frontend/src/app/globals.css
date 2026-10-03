@@ -1,0 +1,83 @@
+@import 'tailwindcss';
+
+@config '../../tailwind.config.ts';
+
+:root {
+    --bg: #07090a;
+    --bg-1: #0e1112;
+    --bg-2: #131718;
+    --line: #1d2224;
+    --line-2: #2a3033;
+    --fg: #e9efe7;
+    --fg-2: #aab2ad;
+    --fg-3: #6a716d;
+    --fg-4: #353a37;
+    --a1: #6dffb0;
+    --a2: #ffb547;
+    --a1-soft: rgba(109, 255, 176, 0.13);
+    --a2-soft: rgba(255, 181, 71, 0.14);
+
+    --font-space-grotesk: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+    --font-jetbrains-mono: 'JetBrains Mono', monospace;
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+*/
+@layer base {
+    *,
+    ::after,
+    ::before,
+    ::backdrop,
+    ::file-selector-button {
+        border-color: var(--line, currentColor);
+    }
+}
+
+/*
+  Note: no manual `* { margin: 0; padding: 0 }` reset here on purpose.
+  Tailwind's own preflight (imported above) already resets these inside its
+  own `@layer base`. MUI's styles are emitted inside `@layer mui`
+  (`enableCssLayer: true` in theme-registry.tsx) — CSS cascade layers always
+  lose to *unlayered* rules regardless of specificity, so a hand-written,
+  unlayered reset here would silently zero out MUI's own spacing/margins
+  (e.g. Stack's sibling-margin spacing) everywhere in the app.
+*/
+
+html,
+body {
+    max-width: 100vw;
+    overflow-x: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-jetbrains-mono);
+}
+
+body {
+    background: radial-gradient(1200px 600px at 80% -10%, var(--a1-soft), transparent 60%),
+    radial-gradient(900px 500px at -10% 20%, var(--a2-soft), transparent 60%),
+    var(--bg);
+    background-attachment: fixed;
+}
+
+/* Layered for the reason above: unlayered, this beat MUI's color on every component rendered as a link
+   (e.g. <Button component={Link} variant="contained"> showed light text on the green button). */
+@layer base {
+    a {
+        color: inherit;
+        text-decoration: none;
+    }
+}
+
+::selection {
+    background: var(--a1);
+    color: var(--bg);
+}
+
+/* Scrollbars */
+* {
+    scrollbar-color: var(--line-2) transparent;
+    scrollbar-width: thin;
+}

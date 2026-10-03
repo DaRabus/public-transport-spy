@@ -1,0 +1,59 @@
+{
+  "name": "public-transport-spy-workspace",
+  "version": "0.1.0",
+  "description": "DIY ESP32 + SSD1322 OLED live public transport departure board with a NestJS API and Next.js dashboard (Swiss timetable data, SBB/CFF/FFS)",
+  "keywords": [
+    "esp32",
+    "ssd1322",
+    "oled",
+    "public-transport",
+    "departure-board",
+    "transit",
+    "swiss-public-transport",
+    "diy",
+    "iot",
+    "platformio",
+    "nestjs",
+    "nextjs",
+    "self-hosted",
+    "sbb",
+    "cff",
+    "ffs",
+    "swiss-federal-railways",
+    "schweizerische-bundesbahnen",
+    "switzerland"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DaRabus/public-transport-spy.git"
+  },
+  "homepage": "https://github.com/DaRabus/public-transport-spy#readme",
+  "bugs": {
+    "url": "https://github.com/DaRabus/public-transport-spy/issues"
+  },
+  "private": true,
+  "workspaces": [
+    "api",
+    "frontend"
+  ],
+  "scripts": {
+    "dev:api": "npm --prefix api run start:dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "format": "prettier --write \"{api,frontend}/**/*.{ts,tsx,mjs}\"",
+    "format:check": "prettier --check \"{api,frontend}/**/*.{ts,tsx,mjs}\"",
+    "build": "npm --prefix api run build && npm --prefix frontend run build",
+    "build:api": "npm --prefix api run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:api": "npm --prefix api run test",
+    "typecheck:api": "npm --prefix api run typecheck",
+    "firmware:build": "pio run -d on-chip-software",
+    "firmware:upload": "pio run -d on-chip-software -t upload",
+    "test:frontend": "npm --prefix frontend test",
+    "test:integration": "npm --prefix api run test:integration",
+    "migration:check": "npm --prefix api run migration:check"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}

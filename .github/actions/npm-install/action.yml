@@ -1,0 +1,10 @@
+name: 'npm install'
+description: 'Install dependencies across workspaces using root configuration'
+runs:
+  using: 'composite'
+  steps:
+    - name: npm install
+      run: |
+        echo "Installing workspace dependencies from the lockfile..."
+        npm ci --no-audit --prefer-offline
+      shell: bash

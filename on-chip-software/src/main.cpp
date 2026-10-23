@@ -666,12 +666,15 @@ unsigned long pageDurationMs(int index) {
 bool listsNeedRefetch(unsigned long msSinceLastFetch) {
   time_t now = time(nullptr);
   if (!isTimeValid(now)) return false;
+  JsonArray pages = screens["pages"];
   for (int p = 0; p < pageCount(); p++) {
-    for (JsonObject w : screens["pages"][p]["widgets"].as<JsonArray>()) {
+    JsonArray widgets = pages[p]["widgets"];
+    for (JsonObject w : widgets) {
       if (strcmp(w["t"] | "", "list") != 0) continue;
       int fetched = 0;
       int upcoming = 0;
-      for (JsonObject item : w["items"].as<JsonArray>()) {
+      JsonArray items = w["items"];
+      for (JsonObject item : items) {
         if (fetched == MAX_LIST_ITEMS) break;
         fetched++;
         if (listItemVisible(item["ts"] | 0L, now, w["leadSec"] | 0L, true)) upcoming++;

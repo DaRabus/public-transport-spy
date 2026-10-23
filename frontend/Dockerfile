@@ -8,7 +8,7 @@ WORKDIR /app
 # npm ci validates the lockfile against every workspace manifest, so all of them are needed;
 # --workspace frontend then installs only the frontend's dependency tree.
 COPY package.json package-lock.json ./
-COPY frontend/package.json frontend/.npmrc frontend/
+COPY frontend/package.json frontend/
 COPY api/package.json api/
 RUN npm ci --workspace frontend --include-workspace-root=false --no-audit --no-fund
 

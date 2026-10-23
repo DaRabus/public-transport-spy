@@ -76,6 +76,7 @@ DATABASE_URL=postgres://postgres:postgres@localhost:4700/public_transport_spy_te
 | `[CI]-build-pr.yaml` | every PR, push to `main` | Prettier check, API typecheck + build, frontend build (includes its typecheck), **Docker images** for API and frontend (same contexts as `docker-compose.yml`, so lockfile/Dockerfile drift fails), and a **stack smoke test** that boots PostgreSQL + API + frontend with `docker compose` and probes health, the proxy and the auth guards |
 | `[CI]-firmware-stats.yaml` | changes in `on-chip-software/` or the workflow | firmware logic + contract tests, dev build with RAM/flash report (PR comment), **retail build**, and a check that the retail build refuses to compile without `PTS_BACKEND_URL` |
 | `[CI]-pr-size.yaml` | every PR | size label |
+| `[CD]-release.yaml` | manual (`workflow_dispatch` on `main`) | bumps workspace versions (`package.json`, `api/package.json`, `frontend/package.json`, `package-lock.json`) by `major`/`minor`/`patch`, tags `<version>-<timestamp>Z` (e.g. `1.0.0-1792771210Z`), builds ESP32 firmware binaries (`esp32dev`), pushes API and frontend Docker images to GHCR (`ghcr.io`), and publishes a GitHub Release |
 
 The contract fixture lives in `on-chip-software/`, so regenerating it after a composer change also triggers the firmware workflow; a composer change without a regenerated fixture already fails the API unit tests.
 

@@ -10,7 +10,7 @@ FROM base AS deps
 # npm ci validates the lockfile against every workspace manifest, so all of them are needed.
 COPY package.json package-lock.json ./
 COPY api/package.json api/
-COPY frontend/package.json frontend/.npmrc frontend/
+COPY frontend/package.json frontend/
 RUN npm ci --workspace api --include-workspace-root=false --no-audit --no-fund
 
 FROM base AS build

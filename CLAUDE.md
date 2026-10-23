@@ -118,8 +118,7 @@ npm run build             # Run build:api and build:frontend
 ## Path Aliases
 
 ### Frontend (`frontend/tsconfig.json`)
-- `@helpers/*` maps to `frontend/src/helpers/*`
-- `@components/*` maps to `frontend/src/components/*`
+- `@helpers/*`, `@hooks/*`, `@theme/*`, `@react-feature/*`, `@react-ui-kit/*` map to the matching folders under `frontend/src/`
 
 ### API (`api/tsconfig.json`)
 - Relative imports from `src/modules/*`

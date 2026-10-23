@@ -1,0 +1,279 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Version bump type (Major, Minor, or Patch)'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare-release:
+    name: 'Bump Version & Tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      owner_lc: ${{ steps.bump.outputs.owner_lc }}
+
+    steps:
+      - name: Verify target branch is main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Releases must be triggered from the 'main' branch (current ref: ${{ github.ref }})."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Init CI Job
+        uses: ./.github/actions/init-ci-job
+
+      - name: Bump workspace versions, commit, and push tag
+        id: bump
+        env:
+          RELEASE_TYPE: ${{ inputs.release_type }}
+        run: |
+          set -euo pipefail
+
+          npm version "$RELEASE_TYPE" --workspaces --include-workspace-root --no-git-tag-version
+
+          NEW_VERSION="$(node -p "require('./package.json').version")"
+          TIMESTAMP="$(date -u +"%sZ")"
+          TAG="${NEW_VERSION}-${TIMESTAMP}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Git tag '${TAG}' already exists."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add package.json api/package.json frontend/package.json package-lock.json
+          git commit -m "chore(release): ${TAG}"
+          git tag -a "$TAG" -m "Release ${TAG}"
+          git push origin HEAD:main
+          git push origin "$TAG"
+
+          OWNER_LC="$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')"
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "owner_lc=${OWNER_LC}" >> "$GITHUB_OUTPUT"
+
+  build-firmware:
+    name: 'Build ESP32 Release Firmware'
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: on-chip-software/requirements.txt
+
+      - name: Cache PlatformIO Core & Platforms
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            on-chip-software/.pio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('on-chip-software/platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-platformio-
+
+      - name: Install PlatformIO
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r on-chip-software/requirements.txt
+
+      - name: Firmware Logic & Screen Contract Tests (host)
+        run: pio test -d on-chip-software -e native
+
+      - name: Compile ESP32 Firmware
+        env:
+          PLATFORMIO_BUILD_FLAGS: >-
+            -DFIRMWARE_VERSION=\"${{ needs.prepare-release.outputs.tag }}\"
+        run: pio run -d on-chip-software -e esp32dev
+
+      - name: Package Firmware Artifacts
+        env:
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          BUILD_DIR="on-chip-software/.pio/build/esp32dev"
+          OUT_DIR="release-assets"
+          mkdir -p "$OUT_DIR"
+
+          cp "${BUILD_DIR}/firmware.bin" "${OUT_DIR}/pts-firmware-${TAG}-esp32dev.bin"
+
+          # Bundle bootloader, partition table, and app binary for full USB flashing via esptool.py
+          staging_dir="$(mktemp -d)"
+          cp "${BUILD_DIR}/bootloader.bin" "${staging_dir}/bootloader.bin"
+          cp "${BUILD_DIR}/partitions.bin" "${staging_dir}/partitions.bin"
+          cp "${BUILD_DIR}/firmware.bin" "${staging_dir}/firmware.bin"
+          (
+            cd "$staging_dir"
+            zip -9 "${GITHUB_WORKSPACE}/${OUT_DIR}/pts-firmware-${TAG}-esp32dev-bundle.zip" \
+              bootloader.bin partitions.bin firmware.bin
+          )
+          rm -rf "$staging_dir"
+
+          (
+            cd "$OUT_DIR"
+            sha256sum "pts-firmware-${TAG}-esp32dev.bin" "pts-firmware-${TAG}-esp32dev-bundle.zip" > SHA256SUMS.txt
+          )
+
+      - name: Upload Firmware Release Assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-release-assets
+          path: release-assets/*
+          retention-days: 5
+
+  publish-docker:
+    name: 'Publish Docker Images (GHCR)'
+    needs: prepare-release
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: api
+            dockerfile: api/Dockerfile
+            image: public-transport-spy-api
+          - component: frontend
+            dockerfile: frontend/Dockerfile
+            image: public-transport-spy-frontend
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tags & OCI labels
+        id: meta
+        env:
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+          IMAGE_BASE: ghcr.io/${{ needs.prepare-release.outputs.owner_lc }}/${{ matrix.image }}
+        run: |
+          set -euo pipefail
+          TAGS="${IMAGE_BASE}:${TAG},${IMAGE_BASE}:${VERSION},${IMAGE_BASE}:latest"
+
+          if [[ "$VERSION" =~ ^([0-9]+\.[0-9]+)\.[0-9]+$ ]]; then
+            MAJOR_MINOR="${BASH_REMATCH[1]}"
+            TAGS="${TAGS},${IMAGE_BASE}:${MAJOR_MINOR}"
+          fi
+
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.prepare-release.outputs.tag }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha,scope=${{ matrix.component }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.component }}
+
+  create-release:
+    name: 'Publish GitHub Release'
+    needs:
+      - prepare-release
+      - build-firmware
+      - publish-docker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare-release.outputs.tag }}
+
+      - name: Download Firmware Release Assets
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-release-assets
+          path: release-assets
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare-release.outputs.tag }}
+          VERSION: ${{ needs.prepare-release.outputs.version }}
+          OWNER_LC: ${{ needs.prepare-release.outputs.owner_lc }}
+        run: |
+          set -euo pipefail
+
+          NOTES_HEADER=$(cat <<EOF
+          ### Container Images (GHCR)
+
+          \`\`\`bash
+          docker pull ghcr.io/${OWNER_LC}/public-transport-spy-api:${TAG}
+          docker pull ghcr.io/${OWNER_LC}/public-transport-spy-frontend:${TAG}
+          \`\`\`
+
+          ### ESP32 Firmware (\`esp32dev\`)
+
+          - **Application binary:** \`pts-firmware-${TAG}-esp32dev.bin\` (flash at \`0x10000\`)
+          - **Full flash bundle:** \`pts-firmware-${TAG}-esp32dev-bundle.zip\` (\`bootloader.bin\` @ \`0x1000\`, \`partitions.bin\` @ \`0x8000\`, \`firmware.bin\` @ \`0x10000\`)
+          - **Checksums:** \`SHA256SUMS.txt\`
+          EOF
+          )
+
+          gh release create "$TAG" \
+            release-assets/* \
+            --verify-tag \
+            --title "Release ${TAG}" \
+            --generate-notes \
+            --notes "$NOTES_HEADER"

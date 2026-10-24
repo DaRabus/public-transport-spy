@@ -1,6 +1,6 @@
 {
   "name": "public-transport-spy-frontend",
-  "version": "0.1.0",
+  "version": "2.0.1",
   "description": "Next.js dashboard for the Public Transport Spy departure board: pair displays, pick stations, live OLED preview",
   "keywords": [
     "esp32",

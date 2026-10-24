@@ -1,6 +1,6 @@
 {
   "name": "public-transport-spy",
-  "version": "0.1.0",
+  "version": "2.0.1",
   "description": "NestJS API for the Public Transport Spy departure board: device pairing, screen composition and Swiss timetable data",
   "keywords": [
     "esp32",

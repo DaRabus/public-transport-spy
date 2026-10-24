@@ -1,6 +1,6 @@
 {
   "name": "public-transport-spy-workspace",
-  "version": "0.1.0",
+  "version": "2.1.0",
   "description": "DIY ESP32 + SSD1322 OLED live public transport departure board with a NestJS API and Next.js dashboard (Swiss timetable data, SBB/CFF/FFS)",
   "keywords": [
     "esp32",

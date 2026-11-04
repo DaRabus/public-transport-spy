@@ -56,6 +56,9 @@ bool serverOk = false;    // last backend call succeeded
 bool portalOpen = false;
 bool holdHint = false;
 int authFailures = 0;
+String configEtag = "";   // If-None-Match for GET /config and /screens: the backend answers 304 when unchanged
+String screensEtag = "";
+bool configPaired = false;  // paired flag of the config the ETag belongs to
 
 String stationName = "";
 String timezoneString = "";
@@ -100,10 +103,14 @@ String apiUrl(const char* path);
 String loadOrCreateDeviceId();
 void applyTimezone(const String& tz);
 bool insideSchedule();
-int httpRequest(const char* method, const String& url, const String& body, String* response, bool authenticated);
+int httpRequest(const char* method, const String& url, const String& body, String* response, bool authenticated,
+                String* etag = nullptr);
+void closeIdleConnection(unsigned long now);
 void openPortal();
 void closePortal();
 void onWifiConnected();
+void watchWifi(unsigned long now, bool online, bool backendOk);
+void persistPortalBackendUrl();
 void handleButton(unsigned long now);
 void factoryReset();
 void newPairingCode();
@@ -142,8 +149,14 @@ void setup() {
   // Start the radio before generating IDs/codes: esp_random() is only truly random with RF enabled.
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
+  // Log why the link dropped (e.g. 200 beacon timeout, 15 handshake timeout, 2 auth expired).
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
+    Serial.printf("Wi-Fi disconnected, reason %d\n", info.wifi_sta_disconnected.reason);
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+  WiFi.setSleep(false);  // modem sleep drops beacons on some routers and the link silently dies
 
   deviceUUID = loadOrCreateDeviceId();
+  WiFi.setHostname(("PTSpy-" + deviceUUID.substring(0, 4)).c_str());  // recognisable in the router's client list
   String savedUrl = normalizedUrl(readFile(serverConfigFile));
   if (savedUrl.length() > 0) setBackendUrl(savedUrl);
   deviceToken = readFile(tokenConfigFile);
@@ -153,6 +166,9 @@ void setup() {
 #ifdef SHOW_BACKEND_URL_FIELD
   backendUrlParam.setValue(backendBaseUrl, 127);
   wm.addParameter(&backendUrlParam);
+  // Saving the portal while already online is no offline->online transition, so persist here too.
+  wm.setSaveParamsCallback(persistPortalBackendUrl);
+  wm.setSaveConfigCallback(persistPortalBackendUrl);
 #endif
 
   if (deviceToken.length() == 0) {
@@ -187,6 +203,8 @@ void loop() {
   if (online && isOffline) onWifiConnected();
   isOffline = !online;
   if (isOffline) serverOk = false;
+  watchWifi(now, online, serverOk);
+  closeIdleConnection(now);
 
   if (state == State::Claiming) {
     tickClaiming(now);
@@ -288,33 +306,65 @@ bool insideSchedule() {
 // HTTP (one place for every backend call)
 // ==========================================
 
+// Clients outlive a call so the calls of one poll cycle share a single TLS handshake (heap fragmentation
+// and handshake time were the cost); closeIdleConnection() frees them between cycles.
+static WiFiClient plainClient;
+static WiFiClientSecure secureClient;
+static unsigned long lastHttpAt = 0;
+
+void closeIdleConnection(unsigned long now) {
+  if (lastHttpAt == 0 || now - lastHttpAt < 5000) return;
+  plainClient.stop();
+  secureClient.stop();
+  lastHttpAt = 0;
+}
+
 // Returns the HTTP status, or a negative HTTPClient error (connection refused, DNS, TLS...).
-int httpRequest(const char* method, const String& url, const String& body, String* response, bool authenticated) {
-  WiFiClient plainClient;
-  WiFiClientSecure secureClient;
-  HTTPClient http;
-  http.setConnectTimeout(5000);
-  http.setTimeout(10000);
+// With `etag`, sends If-None-Match and keeps the newest ETag; a 304 means "unchanged".
+int httpRequest(const char* method, const String& url, const String& body, String* response, bool authenticated,
+                String* etag) {
+  for (int attempt = 0; attempt < 2; attempt++) {
+    HTTPClient http;
+    http.setConnectTimeout(5000);
+    http.setTimeout(10000);
+    http.setReuse(true);
 
-  bool started;
-  if (url.startsWith("https://")) {
-    secureClient.setCACertBundle(rootca_crt_bundle_start);
-    started = http.begin(secureClient, url);
-  } else {
-    started = http.begin(plainClient, url);
+    bool started;
+    if (url.startsWith("https://")) {
+      secureClient.setCACertBundle(rootca_crt_bundle_start);
+      started = http.begin(secureClient, url);
+    } else {
+      started = http.begin(plainClient, url);
+    }
+    if (!started) return -1;
+
+    if (authenticated) {
+      http.addHeader("X-Device-ID", deviceUUID);
+      http.addHeader("X-Device-Token", deviceToken);
+    }
+    if (body.length() > 0) http.addHeader("Content-Type", "application/json");
+    if (etag) {
+      const char* wanted[] = {"ETag"};
+      http.collectHeaders(wanted, 1);
+      if (etag->length() > 0) http.addHeader("If-None-Match", *etag);
+    }
+
+    int code = http.sendRequest(method, body);
+    if (code == 200) {
+      if (response) *response = http.getString();
+      if (etag) *etag = http.header("ETag");
+    }
+    http.end();
+    lastHttpAt = millis();
+    // A kept-alive socket the server closed meanwhile fails once; retry on a fresh connection.
+    if (code < 0 && attempt == 0) {
+      plainClient.stop();
+      secureClient.stop();
+      continue;
+    }
+    return code;
   }
-  if (!started) return -1;
-
-  if (authenticated) {
-    http.addHeader("X-Device-ID", deviceUUID);
-    http.addHeader("X-Device-Token", deviceToken);
-  }
-  if (body.length() > 0) http.addHeader("Content-Type", "application/json");
-
-  int code = http.sendRequest(method, body);
-  if (code == 200 && response) *response = http.getString();
-  http.end();
-  return code;
+  return -1;
 }
 
 // ==========================================
@@ -339,16 +389,55 @@ void closePortal() {
   lastScreenUpdate = 0;
 }
 
-void onWifiConnected() {
-  Serial.printf("Wi-Fi connected, IP %s\n", WiFi.localIP().toString().c_str());
+void persistPortalBackendUrl() {
 #ifdef SHOW_BACKEND_URL_FIELD
   String entered = normalizedUrl(backendUrlParam.getValue());
   if (entered.length() > 0 && entered != backendBaseUrl) {
     setBackendUrl(entered);
+    configEtag = screensEtag = "";
     writeFile(serverConfigFile, entered);
     Serial.printf("Persisted new backend URL: %s\n", backendBaseUrl);
+    lastApiFetch = 0;
+    lastClaimAttempt = 0;
+    lastHelloAttempt = 0;
   }
 #endif
+}
+
+// The Arduino core only auto-reconnects for a whitelist of disconnect reasons (not e.g. 8 ASSOC_LEAVE, which
+// routers send on a reboot or nightly restart), and a link can be "connected" yet dead (NAT/ARP state lost).
+// So: offline -> retry with backoff (5 s doubling to 60 s, radio power-cycle after 5 min); online but the
+// backend unreachable for 15 min -> one fresh connect. Never reboots (project invariant).
+void watchWifi(unsigned long now, bool online, bool backendOk) {
+  static unsigned long offlineSince = 0, nextKick = 0, lastBackendOk = 0, retryMs = 5000;
+  if (portalOpen) { offlineSince = 0; return; }
+  if (online) {
+    offlineSince = 0;
+    retryMs = 5000;
+    if (backendOk || lastBackendOk == 0) lastBackendOk = now;
+    if (now - lastBackendOk < 900000UL) return;
+    Serial.println("Wi-Fi up but backend unreachable for 15 min, reconnecting");
+    lastBackendOk = now;
+  } else {
+    lastBackendOk = 0;
+    if (offlineSince == 0) {
+      offlineSince = now;
+      nextKick = now + retryMs;
+    }
+    if ((long)(now - nextKick) < 0) return;
+    retryMs = min(retryMs * 2, 60000UL);
+    nextKick = now + retryMs;
+    Serial.println("Wi-Fi still down, reconnecting");
+  }
+  WiFi.disconnect();
+  if (!online && now - offlineSince > 300000UL) WiFi.mode(WIFI_OFF);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin();
+}
+
+void onWifiConnected() {
+  Serial.printf("Wi-Fi connected, IP %s\n", WiFi.localIP().toString().c_str());
+  persistPortalBackendUrl();
   // Non-blocking; the clock shows --:-- until the first sync lands.
   configTzTime(timezoneString.c_str(), "pool.ntp.org", "time.google.com");
   // Talk to the backend right away instead of waiting for the next interval.
@@ -423,6 +512,7 @@ void resetToClaiming() {
   LittleFS.remove(configFile);
   LittleFS.remove(cacheFile);
   deviceToken = "";
+  configEtag = screensEtag = "";
   screens.clear();
   pageIndex = 0;
   authFailures = 0;
@@ -551,7 +641,11 @@ void refreshFromServer() {
 
 int fetchConfiguration(bool& paired) {
   String payload;
-  int code = httpRequest("GET", apiUrl("/config"), "", &payload, true);
+  int code = httpRequest("GET", apiUrl("/config"), "", &payload, true, &configEtag);
+  if (code == 304) {
+    paired = configPaired;
+    return 200;
+  }
   if (code != 200) {
     Serial.printf("GET " DEVICE_API "/config -> %d\n", code);
     return code;
@@ -561,6 +655,7 @@ int fetchConfiguration(bool& paired) {
   if (deserializeJson(doc, payload)) return -2;
   applyConfig(doc);
   paired = doc["isPaired"] | false;
+  configPaired = paired;
   if (!paired) {
     pairingCode = String(doc["pairingCode"] | "");
     pairingUrl = String(doc["pairingUrl"] | "");
@@ -608,6 +703,7 @@ void maybeMoveBackend(const char* raw) {
   if (httpRequest("GET", next + DEVICE_API "/hello", "", nullptr, false) != 200) return;
   Serial.printf("Backend moved to %s\n", next.c_str());
   setBackendUrl(next);
+  configEtag = screensEtag = "";
   writeFile(serverConfigFile, next);
 }
 
@@ -643,7 +739,8 @@ void loadCachedScreens() {
 
 bool fetchScreens() {
   String payload;
-  int code = httpRequest("GET", apiUrl("/screens"), "", &payload, true);
+  int code = httpRequest("GET", apiUrl("/screens"), "", &payload, true, &screensEtag);
+  if (code == 304) return true;
   if (code != 200) {
     Serial.printf("GET " DEVICE_API "/screens -> %d\n", code);
     return false;

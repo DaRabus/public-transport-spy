@@ -93,7 +93,7 @@ The firmware is split into two translation units:
 | `src/display.cpp` (`include/display.h`) | Display engine: owns the U8g2 panel, renders a page of widgets (`renderPage`), the pairing screen with QR, the Wi-Fi setup screen and messages. It reads no firmware globals; everything comes in as parameters |
 | `include/device_logic.h`, `include/screen_logic.h` | Pure, host-tested helpers shared by both (and by the native tests) |
 
-The firmware is a small state machine (`enum class State` in `main.cpp`). Wi-Fi is handled separately and re-checked on every loop pass, so the device recovers by itself when the router comes back. It never reboots for this.
+The firmware is a small state machine (`enum class State` in `main.cpp`). Wi-Fi is handled separately and re-checked on every loop pass, so the device recovers by itself when the router comes back. The Arduino core only auto-reconnects for some disconnect reasons (not 8, which routers send on a restart), so while offline the firmware retries itself with backoff (5 s doubling to 60 s, radio power-cycle after 5 min), and reconnects once if Wi-Fi is up but the backend was unreachable for 15 min. It logs every disconnect reason and never reboots for this. HTTP calls of one poll cycle share one kept-alive TLS connection, and `GET /config` and `/screens` send `If-None-Match` (the API answers 304 when unchanged).
 
 `loop()` is non-blocking and yields 10 ms per pass. The only blocking work is an HTTP request (5 s connect + 10 s read timeout, longer during a TLS handshake), during which the screen and the button don't update. Never add long `delay()`s or wait loops: the button, the setup portal and the redraw timers all depend on `loop()` coming round.
 
